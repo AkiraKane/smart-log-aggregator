@@ -54,7 +54,7 @@ class TestDetectLevel:
     def test_detect_warn_short(self) -> None:
         assert detect_level("WARN: Deprecated API") == LogLevel.WARNING
 
-    case = pytest.mark.parametrize("text,expected", [
+    @pytest.mark.parametrize("text,expected", [
         ("err: something broke", LogLevel.ERROR),
         ("The error occurred", LogLevel.ERROR),
         ("Fatal exception in thread", LogLevel.CRITICAL),
@@ -63,10 +63,8 @@ class TestDetectLevel:
         ("Application initialized", LogLevel.INFO),
         ("No level here", LogLevel.UNKNOWN),
     ])
-
-    def test_detect_various_patterns(self) -> None:
-        assert detect_level("[INFO] Server started") == LogLevel.INFO
-        assert detect_level("[ERROR] Something failed") == LogLevel.ERROR
+    def test_detect_various_patterns(self, text: str, expected: LogLevel) -> None:
+        assert detect_level(text) == expected
 
     def test_detect_unknown(self) -> None:
         assert detect_level("Just a plain message") == LogLevel.UNKNOWN

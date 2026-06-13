@@ -155,6 +155,15 @@ def detect_level(text: str) -> LogLevel:
         pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
         if pattern.search(lower):
             return level
+    # Heuristic: common log phrases that imply INFO without explicit keyword
+    info_hints = [
+        r"\bstarting\b", r"\bstarted\b", r"\binitialized\b",
+        r"\blistening\b", r"\bready\b", r"\bconnected\b",
+        r"\bshutting\s+down\b", r"\bstopped\b",
+    ]
+    for pattern in info_hints:
+        if re.search(pattern, lower):
+            return LogLevel.INFO
     return LogLevel.UNKNOWN
 
 
@@ -310,33 +319,35 @@ def aggregate_logs(
     if custom_patterns:
         all_patterns.extend(custom_patterns)
 
+    # Temporarily extend CATEGORY_PATTERNS for categorize_entry if custom_patterns provided
+    if custom_patterns:
+        original_patterns = CATEGORY_PATTERNS[:]
+        CATEGORY_PATTERNS.extend(custom_patterns)
+
     categories: dict[str, LogCategory] = {}
 
     for entry in entries:
-        msg_lower = entry.message.lower()
-        matched = False
+        cat_name = categorize_entry(entry)
 
-        for cat_name, pattern, default_level in all_patterns:
-            if re.search(pattern, msg_lower):
-                if cat_name not in categories:
-                    categories[cat_name] = LogCategory(
-                        name=cat_name,
-                        level=max(entry.level, default_level, key=lambda x: _level_sort_key(x)),
-                        pattern=pattern,
-                    )
-                categories[cat_name].add_entry(entry)
-                matched = True
-                break
+        # Find the matching pattern and default level for LogCategory creation
+        if cat_name not in categories:
+            matched_level = entry.level
+            matched_pattern = "(uncategorized)"
+            for name, pattern, default_level in CATEGORY_PATTERNS:
+                if name == cat_name:
+                    matched_level = max(entry.level, default_level, key=lambda x: _level_sort_key(x))
+                    matched_pattern = pattern
+                    break
+            categories[cat_name] = LogCategory(
+                name=cat_name,
+                level=matched_level,
+                pattern=matched_pattern,
+            )
+        categories[cat_name].add_entry(entry)
 
-        if not matched:
-            cat_name = f"other_{entry.level.value}"
-            if cat_name not in categories:
-                categories[cat_name] = LogCategory(
-                    name=cat_name,
-                    level=entry.level,
-                    pattern="(uncategorized)",
-                )
-            categories[cat_name].add_entry(entry)
+    # Restore original patterns if we extended them
+    if custom_patterns:
+        CATEGORY_PATTERNS[:] = original_patterns
 
     return categories
 
